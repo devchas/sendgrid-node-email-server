@@ -33,4 +33,6 @@ EmailSeries.belongsToMany(User, { through: UserSeries });
 EmailSeries.hasMany(SeriesStage, { as: 'Stages' });
 SeriesStage.belongsTo(EmailSeries);
 
+if (false) { Conn.sync({ force: true }).then(() => console.log('DB SYNC COMPLETE')); }
+
 export default Conn;
