@@ -1,4 +1,5 @@
 import db from '../db';
+var sg = require('sendgrid')(process.env.SG_API_KEY);
 
 // POST /series
 export const createSeries = (req, res) => {
@@ -8,7 +9,9 @@ export const createSeries = (req, res) => {
     if (existingSeries) { throw new Error('Email series already exists'); }
 
     db.models.emailSeries.create({ label }).then(newSeries => {
-      createStages(stages, newSeries.id, 0, () => {
+      const stagesToAdd = (stages) ? stages : [];
+
+      createStages(stagesToAdd, newSeries.id, 0, () => {
         res.send({ emailSeries: newSeries });
       });
     });
@@ -23,6 +26,50 @@ function createStages(stages, emailSeryId, i=0, callback) {
   db.models.seriesStage.create({ label, daysToSend, sgTemplateID, emailSeryId }).then(stage => {
     i++;
     createStages(stages, emailSeryId, i, callback);
+  });
+}
+
+// GET /series
+export const getAllSeries = (req, res) => {
+  db.models.emailSeries.findAll().then(allSeries => {
+    getAllSeriesStages(allSeries, 0, [], allSeriesWithStages => {
+      res.send(allSeriesWithStages);
+    });
+  });
+}
+
+function getAllSeriesStages(series, i=0, result=[], callback) {
+  if (i === series.length) { return callback(result); }
+
+  getSeriesWithStages(series[i], seriesWithStages => {
+    result.push(seriesWithStages);
+    i++;
+    getAllSeriesStages(series, i, result, callback);
+  });
+}
+
+// GET /series/<id>
+export const getSeries = (req, res) => {
+  const { params: { id } } = req;
+  if (!id) { throw new Error('Missing required param: id'); }
+
+  db.models.emailSeries.findById(id).then(emailSeries => {
+    if (!emailSeries) { throw new Error('Series does not exist'); }
+
+    getSeriesWithStages(emailSeries, series => {
+      res.send(series);
+    });
+  });
+};
+
+function getSeriesWithStages(series, callback) {
+  series.getStages().then(seriesStages => {
+    const stages = seriesStages.map(({ id, label, daysToSend, sgTemplateID }) => {
+      return { id, label, daysToSend, sgTemplateID };
+    });
+
+    const { id, label } = series;
+    callback({ id, label, stages });
   });
 }
 
@@ -87,10 +134,32 @@ export const deleteStage = (req, res) => {
     if (!stage) { throw new Error('Invalid series stage ID'); }
 
     stage.destroy({ force: true }).then(() => {
-      res.json({ DELETED: stage });
+      res.send(stage);
     });
   });
 };
+
+// GET /series/users/<emailSeryId>
+export const getSeriesUsers = (req, res) => {
+  const { params: { emailSeryId } } = req;
+
+  db.models.userSeries.findAll({ where: { emailSeryId } }).then(userSeries => {
+    getUsersFromUserSeries(userSeries, 0, [], users => {
+      res.send(users);
+    });
+  });
+};
+
+function getUsersFromUserSeries(userSeries, i=0, outputSeries=[], callback) {
+  if (i == userSeries.length) { return callback(outputSeries); }
+
+  const userId = userSeries[i].userId;
+  db.models.user.findById(userId).then(({ id, email, firstName, lastName }) => {
+    outputSeries.push({ id, email, firstName, lastName });
+    i++;
+    getUsersFromUserSeries(userSeries, i, outputSeries, callback);
+  });
+}
 
 // POST /series/user
 export const createUserSeries = (req, res) => {
@@ -123,4 +192,23 @@ export const stopUserSeries = (req, res) => {
       res.send(series);
     });
   });
+};
+
+// GET /templates
+export const getSGTemplates = (req, res) => {
+  var request = sg.emptyRequest({
+    method: 'GET',
+    path: '/v3/templates',
+  });  
+
+  sg.API(request, (error, response) => {
+    if (error) {
+      console.log('Error response received', error.response.body.errors[0]);
+      throw new Error(error.response.body.errors[0]);
+    }
+    console.log(response.statusCode);
+    console.log(response.body);
+    console.log(response.headers);
+    res.send(response.body);
+  });  
 };
