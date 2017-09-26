@@ -53,6 +53,8 @@ export const getSeries = (req, res) => {
   const { params: { id } } = req;
   if (!id) { throw new Error('Missing required param: id'); }
 
+  console.log('ID: ', id);
+
   db.models.emailSeries.findById(id).then(emailSeries => {
     if (!emailSeries) { throw new Error('Series does not exist'); }
 
@@ -143,7 +145,7 @@ export const deleteStage = (req, res) => {
 export const getSeriesUsers = (req, res) => {
   const { params: { emailSeryId } } = req;
 
-  db.models.userSeries.findAll({ where: { emailSeryId } }).then(userSeries => {
+  db.models.userSeries.findAll({ where: { emailSeryId, stopEmails: false } }).then(userSeries => {
     getUsersFromUserSeries(userSeries, 0, [], users => {
       res.send(users);
     });
@@ -153,9 +155,11 @@ export const getSeriesUsers = (req, res) => {
 function getUsersFromUserSeries(userSeries, i=0, outputSeries=[], callback) {
   if (i == userSeries.length) { return callback(outputSeries); }
 
+  const { startDate } = userSeries[i];
+
   const userId = userSeries[i].userId;
   db.models.user.findById(userId).then(({ id, email, firstName, lastName }) => {
-    outputSeries.push({ id, email, firstName, lastName });
+    outputSeries.push({ id, email, firstName, lastName, startDate });
     i++;
     getUsersFromUserSeries(userSeries, i, outputSeries, callback);
   });
@@ -206,9 +210,6 @@ export const getSGTemplates = (req, res) => {
       console.log('Error response received', error.response.body.errors[0]);
       throw new Error(error.response.body.errors[0]);
     }
-    console.log(response.statusCode);
-    console.log(response.body);
-    console.log(response.headers);
     res.send(response.body);
   });  
 };
